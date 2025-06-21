@@ -67,7 +67,7 @@
             display: none;
         }
         
-        /* Новые стили для интерфейса */
+        /* Стили для интерфейса */
         #scoreContainer {
             position: absolute;
             top: 15px;
@@ -120,52 +120,22 @@
             top: 0;
             left: 16px;
         }
-        
-        h1 {
-            font-size: 2.8rem;
-            margin-bottom: 20px;
-            text-shadow: 0 0 10px #00bfff;
-            color: #4da6ff;
-        }
-        
-        p {
-            font-size: 1.2rem;
-            line-height: 1.6;
-            margin: 10px 0;
-            color: #ccc;
-        }
-        
-        #gameTitle {
-            font-size: 3.5rem;
-            margin-bottom: 10px;
-            background: linear-gradient(45deg, #4da6ff, #b3e0ff);
-            -webkit-background-clip: text;
-            background-clip: text;
-            -webkit-text-fill-color: transparent;
-            text-shadow: 0 0 15px rgba(77, 166, 255, 0.5);
-        }
     </style>
 </head>
 <body>
     <canvas id="gameCanvas"></canvas>
     
-    <!-- Спрайты для предзагрузки (скрыты) -->
-    <img id="shipSprite" src="spaceship.png" class="hidden">
-    <img id="asteroidSprite" src="asteroid.png" class="hidden">
-    
     <div id="startScreen">
-        <h1 id="gameTitle">КОСМИЧЕСКИЙ ЗАЩИТНИК</h1>
+        <h1>КОСМИЧЕСКИЙ ЗАЩИТНИК</h1>
         <p>Защищайте планету от астероидов!</p>
         <p>Управление: мышка или касание экрана</p>
         <p>Кликните для стрельбы</p>
-        <button id="startButton">Загрузка...</button>
+        <button id="startButton">СТАРТ ИГРЫ</button>
     </div>
     
     <div id="gameUI" class="hidden">
         <div id="scoreContainer">0</div>
-        <div id="livesContainer">
-            <!-- Сердечки будут добавляться через JS -->
-        </div>
+        <div id="livesContainer"></div>
     </div>
 
     <script>
@@ -178,10 +148,6 @@
         const livesContainer = document.getElementById('livesContainer');
         const startButton = document.getElementById('startButton');
         
-        // Загрузка спрайтов
-        const shipImg = document.getElementById('shipSprite');
-        const asteroidImg = document.getElementById('asteroidSprite');
-        
         // Размеры canvas
         canvas.width = 800;
         canvas.height = 600;
@@ -191,24 +157,6 @@
         let lives = 3;
         let gameRunning = false;
         let animationId;
-        let assetsLoaded = 0;
-        const totalAssets = 2; // Количество спрайтов для загрузки
-        
-        // Проверка загрузки ресурсов
-        function assetLoaded() {
-            assetsLoaded++;
-            if (assetsLoaded === totalAssets) {
-                startButton.disabled = false;
-                startButton.textContent = "СТАРТ ИГРЫ";
-            }
-        }
-        
-        shipImg.onload = assetLoaded;
-        asteroidImg.onload = assetLoaded;
-        
-        // Если ресурсы уже загружены (например, из кэша)
-        if (shipImg.complete && shipImg.naturalWidth !== 0) assetLoaded();
-        if (asteroidImg.complete && asteroidImg.naturalWidth !== 0) assetLoaded();
         
         // Игровые объекты
         const player = {
@@ -227,27 +175,19 @@
         const gameSettings = {
             bulletSpeed: 10,
             asteroidSpeed: 3,
-            asteroidSpawnRate: 60, // кадры между появлением астероидов
-            asteroidSpawnCounter: 0
+            asteroidSpawnRate: 60,
+            asteroidSpawnCounter: 0,
+            maxAsteroids: 10
         };
         
         // Обработчики событий
         canvas.addEventListener('mousemove', movePlayer);
-        canvas.addEventListener('touchmove', function(e) {
-            e.preventDefault();
-            const touch = e.touches[0];
-            const rect = canvas.getBoundingClientRect();
-            player.x = touch.clientX - rect.left;
-            // Ограничение движения
-            player.x = Math.max(player.width/2, Math.min(player.x, canvas.width - player.width/2));
-        });
-        
+        canvas.addEventListener('touchmove', handleTouchMove);
         canvas.addEventListener('click', shoot);
         canvas.addEventListener('touchstart', shoot);
-        
         startButton.addEventListener('click', startGame);
         
-        // Функции игры
+        // Основные функции игры
         function startGame() {
             startScreen.classList.add('hidden');
             gameUI.classList.remove('hidden');
@@ -257,6 +197,11 @@
             bullets.length = 0;
             asteroids.length = 0;
             updateUI();
+            
+            // Сброс настроек сложности
+            gameSettings.asteroidSpeed = 3;
+            gameSettings.asteroidSpawnRate = 60;
+            
             gameLoop();
         }
         
@@ -289,7 +234,6 @@
             for (let i = bullets.length - 1; i >= 0; i--) {
                 bullets[i].y -= gameSettings.bulletSpeed;
                 
-                // Удаление пуль за пределами экрана
                 if (bullets[i].y < 0) {
                     bullets.splice(i, 1);
                 }
@@ -297,13 +241,14 @@
             
             // Обновление астероидов
             gameSettings.asteroidSpawnCounter++;
-            if (gameSettings.asteroidSpawnCounter >= gameSettings.asteroidSpawnRate) {
+            if (gameSettings.asteroidSpawnCounter >= gameSettings.asteroidSpawnRate && 
+                asteroids.length < gameSettings.maxAsteroids) {
                 spawnAsteroid();
                 gameSettings.asteroidSpawnCounter = 0;
                 
                 // Увеличиваем сложность
                 if (score > 0 && score % 10 === 0) {
-                    gameSettings.asteroidSpeed += 0.2;
+                    gameSettings.asteroidSpeed = Math.min(8, gameSettings.asteroidSpeed + 0.2);
                     if (gameSettings.asteroidSpawnRate > 20) {
                         gameSettings.asteroidSpawnRate -= 2;
                     }
@@ -345,36 +290,28 @@
         
         function drawGame() {
             // Рисуем астероиды
+            ctx.save();
+            ctx.fillStyle = '#95a5a6';
             asteroids.forEach(asteroid => {
-                ctx.save();
-                ctx.translate(asteroid.x, asteroid.y);
-                ctx.rotate(asteroid.rotation);
-                ctx.drawImage(
-                    asteroidImg,
-                    -asteroid.width / 2,
-                    -asteroid.height / 2,
-                    asteroid.width,
-                    asteroid.height
-                );
-                ctx.restore();
+                ctx.beginPath();
+                ctx.arc(asteroid.x, asteroid.y, asteroid.radius, 0, Math.PI * 2);
+                ctx.fill();
             });
+            ctx.restore();
             
             // Рисуем игрока
             ctx.save();
-            ctx.translate(player.x, player.y);
-            // Легкое покачивание корабля
-            player.rotation = Math.sin(Date.now() * 0.005) * 0.1;
-            ctx.rotate(player.rotation);
-            ctx.drawImage(
-                shipImg,
-                -player.width / 2,
-                -player.height / 2,
-                player.width,
-                player.height
-            );
+            ctx.fillStyle = '#3498db';
+            ctx.fillRect(player.x - player.width/2, player.y - player.height/2, player.width, player.height);
+            
+            // Рисуем пушки
+            ctx.fillStyle = '#2980b9';
+            ctx.fillRect(player.x - player.width/2 - 5, player.y - player.height/2 - 10, 10, 10);
+            ctx.fillRect(player.x + player.width/2 - 5, player.y - player.height/2 - 10, 10, 10);
             ctx.restore();
             
             // Рисуем пули
+            ctx.save();
             ctx.fillStyle = '#f1c40f';
             ctx.shadowBlur = 10;
             ctx.shadowColor = '#f1c40f';
@@ -383,21 +320,26 @@
                 ctx.arc(bullet.x, bullet.y, bullet.radius, 0, Math.PI * 2);
                 ctx.fill();
             });
-            ctx.shadowBlur = 0;
+            ctx.restore();
         }
         
         function movePlayer(e) {
             const rect = canvas.getBoundingClientRect();
             player.x = e.clientX - rect.left;
-            
-            // Ограничение движения игрока в пределах canvas
+            player.x = Math.max(player.width/2, Math.min(player.x, canvas.width - player.width/2));
+        }
+        
+        function handleTouchMove(e) {
+            e.preventDefault();
+            const touch = e.touches[0];
+            const rect = canvas.getBoundingClientRect();
+            player.x = touch.clientX - rect.left;
             player.x = Math.max(player.width/2, Math.min(player.x, canvas.width - player.width/2));
         }
         
         function shoot() {
             if (!gameRunning) return;
             
-            // Создаем две пули (из двух пушек)
             bullets.push({
                 x: player.x - player.width * 0.3,
                 y: player.y - player.height/2,
@@ -412,43 +354,49 @@
         }
         
         function spawnAsteroid() {
-            const scale = Math.random() * 0.8 + 0.5; // Случайный размер
+            const radius = Math.random() * 20 + 10;
             asteroids.push({
-                x: Math.random() * (canvas.width - 100) + 50,
-                y: -50,
-                width: 70 * scale,
-                height: 70 * scale,
+                x: Math.random() * (canvas.width - radius * 2) + radius,
+                y: -radius,
+                radius: radius,
                 speed: Math.random() * gameSettings.asteroidSpeed + 1,
                 rotation: Math.random() * Math.PI * 2,
-                rotationSpeed: (Math.random() - 0.5) * 0.05,
-                radius: 35 * scale // Для коллизий
+                rotationSpeed: (Math.random() - 0.5) * 0.02
             });
         }
         
         function checkCollision(obj1, obj2) {
-            // Для прямоугольного игрока и астероида с радиусом
+            const dx = obj1.x - obj2.x;
+            const dy = obj1.y - obj2.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
             if (obj2.radius) {
-                // Центр астероида
-                const circleX = obj2.x;
-                const circleY = obj2.y;
-                const radius = obj2.radius;
+                // Для прямоугольного игрока и круглого астероида
+                const rect = {
+                    x: obj1.x - obj1.width/2,
+                    y: obj1.y - obj1.height/2,
+                    width: obj1.width,
+                    height: obj1.height
+                };
                 
-                // Границы игрока
-                const rectX = obj1.x - obj1.width/2;
-                const rectY = obj1.y - obj1.height/2;
-                const rectWidth = obj1.width;
-                const rectHeight = obj1.height;
+                const circle = {
+                    x: obj2.x,
+                    y: obj2.y,
+                    radius: obj2.radius
+                };
                 
-                // Ближайшая точка на прямоугольнике к центру круга
-                let closestX = Math.max(rectX, Math.min(circleX, rectX + rectWidth));
-                let closestY = Math.max(rectY, Math.min(circleY, rectY + rectHeight));
-                
-                // Расстояние от ближайшей точки до центра круга
-                const distanceX = circleX - closestX;
-                const distanceY = circleY - closestY;
-                const distance = Math.sqrt(distanceX * distanceX + distanceY * distanceY);
-                
-                return distance < radius;
+                const distX = Math.abs(circle.x - rect.x - rect.width/2);
+                const distY = Math.abs(circle.y - rect.y - rect.height/2);
+
+                if (distX > (rect.width/2 + circle.radius)) return false;
+                if (distY > (rect.height/2 + circle.radius)) return false;
+
+                if (distX <= (rect.width/2)) return true;
+                if (distY <= (rect.height/2)) return true;
+
+                const dx = distX - rect.width/2;
+                const dy = distY - rect.height/2;
+                return (dx*dx + dy*dy <= (circle.radius * circle.radius));
             }
             
             return false;
@@ -495,10 +443,7 @@
             startGame();
         }
         
-        // Инициализация кнопки
-        startButton.disabled = true;
-        
-        // Создаем сердечки при загрузке
+        // Инициализация интерфейса
         updateUI();
     </script>
 </body>
